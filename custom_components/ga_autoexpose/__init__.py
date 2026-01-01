@@ -23,7 +23,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
         try:
             # Access the exposed entities manager
-            exposed_entities = hass.data.get("homeassistant.exposed_entites")
+            exposed_entities = hass.data.get("homeassistant.exposed_entities")
             entity_registry = async_get_entity_registry(hass)
 
             if not exposed_entities:
