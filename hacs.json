@@ -1,0 +1,7 @@
+{
+  "name": "Google Assistant Auto Expose",
+  "render_readme": true,
+  "content_in_root": false,
+  "zip_release": false,
+  "homeassistant": "2023.1.0"
+}
