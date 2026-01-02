@@ -1,37 +1,158 @@
-# Home Assistant Custom Component: Google Assistant Auto-Expose
+# Google Assistant Auto-Expose for Home Assistant
 
-Tired of having to add all the devices to expose for your local Google Assistant integration to the `google_assistant.entity_config` key in your **configuration.yaml**, while the cloud subscribers get to configure them easily via the UI?
-This custom component automatically exports all the exposed entities configured in Home Assistant's UI for Google Assistant if you are using a local integration instead of the cloud integration.
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/hacs/integration)
 
-## Note
+**Bridge the gap between YAML configuration and UI controls.**
 
-This was hacked together quickly and is not yet ready to be moved to HACS. It assumes you have set up a working local Google Assistant integration (see https://github.com/home-assistant/home-assistant.io/issues/35867#issuecomment-2494797373 for updated instructions since Google has sunset Conversational Actions).
+Tired of manually adding entity IDs to the `google_assistant.entity_config` key in your `configuration.yaml`, while cloud subscribers get to configure them easily via the UI?
 
-## Installation
+This custom component solves that problem. It automatically exports the entities you configure in Home Assistant’s UI (under **Settings > Voice assistants**) to a local file, including their aliases and **Room/Area** assignments. This allows you to use the robust local Google Assistant integration (YAML) combined with the ease of use of the UI.
 
-Manually install into the `custom_components` directory in your config directory (at your own risk) and then restart Home Assistant.
+## ✨ Features
 
-## Usage
+- **UI-Driven Configuration**  
+  Configure your devices in the HA UI; this component generates the necessary YAML configuration for you.
 
-You will then have a new action (formerly called "service") `ga_autoexpose.export_entities`, which exports all the exposed entities configured under `Settings > Voice assistants` into a file **exposed.yaml** in your config folder.
+- **Smart Room Sync**  
+  Automatically maps Home Assistant **Areas** to Google Home **Rooms**. If an entity doesn’t have an area assigned, it intelligently checks the parent device’s area.
 
-Include this file as the `entity_config` content in the `google_assistant` section of your **configuration.yaml** in your config folder, e.g:
+- **Strict Filtering**  
+  Designed to work perfectly with `expose_by_default: false`. It explicitly adds `expose: true` to the generated file for items you toggled on, ensuring Google actually sees them.
+
+- **Clean Output**  
+  Generates a clean, readable `exposed.yaml` file in your config folder.
+
+## 📋 Prerequisites
+
+This component assumes you have already set up a working local Google Assistant integration via YAML.
+
+For setup instructions and current requirements, see the official Home Assistant documentation:  
+https://www.home-assistant.io/integrations/google_assistant
+
+**Note on UI Availability:**  
+To use the **Expose** controls in the UI (`Settings > Voice assistants`), the Home Assistant Cloud component is technically involved in the background to render the menu. You generally need to be logged in under **Settings > Home Assistant Cloud**, but **you do not need an active subscription**.
+
+## 📥 Installation
+
+### Option 1: HACS (Recommended)
+
+1. Open HACS in Home Assistant.
+2. Go to **Integrations** → top-right menu (**⋮**) → **Custom repositories**.
+3. Add the URL of this repository.
+4. Select **Integration** as the category.
+5. Click **Add** and then **Download**.
+6. Restart Home Assistant.
+
+### Option 2: Manual
+
+1. Download this repository.
+2. Copy the `custom_components/ga_autoexpose` folder into your Home Assistant `config/custom_components/` directory.
+3. Restart Home Assistant.
+
+## ⚙️ Configuration
+
+### 1. Enable the component
+
+Add the following line to your `configuration.yaml`:
 
 ```yaml
 ga_autoexpose:
+```
 
+### 2. Configure Google Assistant
+
+Update your existing `google_assistant` configuration to use the generated file.
+
+**Recommended configuration:**
+
+```yaml
 google_assistant:
-  project_id: ***
-  service_account: !include SERVICE_ACCOUNT.JSON
+  project_id: YOUR_PROJECT_ID
+  service_account: !include service_account.json
   report_state: true
+
+  # Set this to false to have full control via the UI (Strict mode)
   expose_by_default: false
+
+  # These domains act as a filter if you enable expose_by_default.
+  # If expose_by_default is false, these are ignored.
   exposed_domains:
     - switch
     - light
+    - climate
+
+  # This is where the magic happens
   entity_config: !include exposed.yaml
 ```
 
-**Important:** The cloud integration must still be active (i.e. you must be logged in under `Settings > Home Assistant Cloud`) in order to be able to use the UI to configure the exposal, but it doesn't need an active subscription.
-I'll look into enabling the UI even with a completely disabled cloud service, if I find the time necessary. But PRs are welcome if others would like to contribute.
+**Note:**  
+The `exposed.yaml` file will be created automatically in your config folder after the first run.
 
-You should call this action before you call `google_assistant.request_sync`, so best make an automation that calls the two actions consecutively in order to get your latest device changes into your Google Assistant / Home app.
+## 🚀 Usage
+
+The integration provides a new service/action:
+
+`ga_autoexpose.export_entities`
+
+When run, it reads your UI settings and overwrites `exposed.yaml`.
+
+### Manual trigger
+
+Developer Tools → **Services / Actions**
+
+- **Service:** `ga_autoexpose.export_entities`
+
+### Automation (Recommended)
+
+To keep everything in sync automatically, create an automation that runs when entity settings change.
+
+**Note:**  
+Because the native `google_assistant` integration loads included files on startup, you usually need to reload YAML or restart Home Assistant for new devices to apply.
+
+```yaml
+alias: "Google Assistant - Auto Export"
+description: "Update exposed.yaml when entity registry changes"
+mode: restart
+
+trigger:
+  - platform: event
+    event_type: entity_registry_updated
+    event_data:
+      action: update
+
+  - platform: event
+    event_type: entity_registry_updated
+    event_data:
+      action: create
+
+  - platform: homeassistant
+    event: start
+
+condition: []
+
+action:
+  - delay: "00:00:30"
+  - service: ga_autoexpose.export_entities
+  - service: system_log.write
+    data:
+      message: "Google Assistant exposed.yaml updated."
+      level: info
+  - service: google_assistant.request_sync
+```
+
+## 🔄 Workflow
+
+1. Go to **Settings > Voice assistants > Google Assistant**
+2. Toggle **Expose** on the entities you want
+3. Wait for the automation to run (or trigger manually)
+4. Restart Home Assistant or reload all YAML
+5. Say: **“Hey Google, sync my devices”**
+
+## 🤝 Contributing
+
+Feel free to open issues or submit pull requests if you have ideas for improvements.
+
+## 📄 License
+
+MIT License
