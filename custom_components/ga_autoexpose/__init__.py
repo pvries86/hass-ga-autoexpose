@@ -5,6 +5,7 @@ import logging
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant, callback
+import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.device_registry import async_get as async_get_device_registry
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.area_registry import async_get as async_get_area_registry
@@ -17,6 +18,8 @@ DOMAIN = "ga_autoexpose"
 ASSISTANT = "cloud.google_assistant"
 DEBOUNCE_TIME = 30  # Seconds to wait after a change before exporting
 
+# FIX VOOR HASSFEST: Definieer dat de config leeg mag zijn
+CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the Google Assistant Auto-Expose component."""
@@ -137,8 +140,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
             _LOGGER.info(f"Exported {len(exposed_entities_data)} entities to {output_file}")
             
             # ------------------------------------------------------------------
-            # NOTIFICATION LOGIC (Only if triggered by auto-updater, not manual service call)
-            # We assume if call is None or comes from our internal scheduler, we notify.
+            # NOTIFICATION LOGIC (Only if triggered by auto-updater)
             # ------------------------------------------------------------------
             if call is None or getattr(call, "context", None) is None: 
                 message = (
