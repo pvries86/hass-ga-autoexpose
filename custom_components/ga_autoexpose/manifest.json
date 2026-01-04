@@ -1,14 +1,19 @@
 {
-    "domain": "ga_autoexpose",
-    "name": "Google Assistant Auto Expose",
-    "codeowners": ["@pvries86"],
-    "config_flow": false,
-    "documentation": "https://github.com/pvries86/hass-ga-autoexpose",
-    "iot_class": "local_push",
-    "issue_tracker": "https://github.com/pvries86/hass-ga-autoexpose/issues",
-    "requirements": [],
-    "after_dependencies": ["google_assistant"],
-    "dependencies": ["google_assistant"],
-    "version": "1.0.0"
+  "domain": "ga_autoexpose",
+  "name": "Google Assistant Auto Expose",
+  "after_dependencies": [
+    "google_assistant"
+  ],
+  "codeowners": [
+    "@pvries86"
+  ],
+  "config_flow": false,
+  "dependencies": [
+    "google_assistant"
+  ],
+  "documentation": "https://github.com/pvries86/hass-ga-autoexpose",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/pvries86/hass-ga-autoexpose/issues",
+  "requirements": [],
+  "version": "1.0.0"
 }
-  
