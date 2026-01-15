@@ -25,7 +25,6 @@ jobs:
         uses: "hacs/action@main"
         with:
           category: "integration"
-          ignore: brands # Verwijder deze regel pas als je logo PR is gemerged!
 
   # JOB 2: Hassfest Validatie (Code & JSON regels van Home Assistant)
   validate-hassfest:
