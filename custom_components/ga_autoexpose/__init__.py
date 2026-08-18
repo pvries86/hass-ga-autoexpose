@@ -10,13 +10,28 @@ from homeassistant.helpers.device_registry import async_get as async_get_device_
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.area_registry import async_get as async_get_area_registry
 from homeassistant.helpers.event import async_call_later
-from homeassistant.const import CLOUD_NEVER_EXPOSED_ENTITIES
 
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "ga_autoexpose"
 ASSISTANT = "cloud.google_assistant"
 DEBOUNCE_TIME = 30  # Seconds to wait after a change before exporting
+
+# Previously imported from homeassistant.const, but that constant was removed
+# in recent Home Assistant versions. Defined locally to keep the behaviour.
+CLOUD_NEVER_EXPOSED_ENTITIES = ["group.all_locks"]
+
+
+class _NoAliasDumper(yaml.SafeDumper):
+    """YAML dumper that never emits anchors/aliases (&id001 / *id001).
+
+    PyYAML deduplicates repeated non-scalar objects (e.g. an aliases list)
+    with anchors. That is valid YAML but confusing in exposed.yaml, so we
+    always write values out in full instead.
+    """
+
+    def ignore_aliases(self, data):
+        return True
 
 # FIX VOOR HASSFEST: Definieer dat de config leeg mag zijn
 CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
@@ -80,9 +95,16 @@ async def async_setup(hass: HomeAssistant, config: dict):
                     continue
                 # ---------------------------
 
-                # Get registry entry info
+                # Get registry entry info. HA now allows a special
+                # ComputedNameType sentinel inside aliases (meaning "use the
+                # computed full name"); it is not YAML-serializable, so keep
+                # only real string aliases.
                 registry_entry = entity_registry.async_get(entity_id)
-                aliases = list(registry_entry.aliases) if registry_entry and registry_entry.aliases else []
+                aliases = (
+                    [a for a in registry_entry.aliases if isinstance(a, str)]
+                    if registry_entry and registry_entry.aliases
+                    else []
+                )
 
                 # Fetch names
                 google_assistant_name = settings.get("name")
@@ -125,18 +147,33 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
                 exposed_entities_data[entity_id] = entity_data
 
-            # Write to file
-            def write_to_file():
-                with open(output_file, "w", encoding="utf-8") as file:
-                    yaml.dump(
-                        exposed_entities_data,
-                        file,
-                        default_flow_style=False,
-                        allow_unicode=True,
-                        sort_keys=False,
-                    )
+            # Serialize first so we can compare against the current file and
+            # avoid needless writes/notifications when nothing changed.
+            yaml_content = yaml.dump(
+                exposed_entities_data,
+                Dumper=_NoAliasDumper,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
 
-            await hass.async_add_executor_job(write_to_file)
+            def write_if_changed():
+                existing = None
+                if os.path.exists(output_file):
+                    with open(output_file, "r", encoding="utf-8") as file:
+                        existing = file.read()
+                if existing == yaml_content:
+                    return False
+                with open(output_file, "w", encoding="utf-8") as file:
+                    file.write(yaml_content)
+                return True
+
+            changed = await hass.async_add_executor_job(write_if_changed)
+
+            if not changed:
+                _LOGGER.debug("exposed.yaml is unchanged; skipping notification.")
+                return
+
             _LOGGER.info(f"Exported {len(exposed_entities_data)} entities to {output_file}")
             
             # ------------------------------------------------------------------
@@ -169,12 +206,8 @@ async def async_setup(hass: HomeAssistant, config: dict):
     cancel_timer = None
 
     @callback
-    def _schedule_export(event):
-        """Schedule the export when entity registry changes."""
-        # Only listen for updates or creates
-        if event.data.get("action") not in ["create", "update"]:
-            return
-
+    def _schedule_export(*args):
+        """Schedule a debounced export when GA expose settings change."""
         nonlocal cancel_timer
         if cancel_timer:
             cancel_timer()
@@ -187,9 +220,18 @@ async def async_setup(hass: HomeAssistant, config: dict):
         # Schedule execution after delay (Debounce)
         cancel_timer = async_call_later(hass, DEBOUNCE_TIME, _run_export_job)
 
+    # Subscribe to Entity Registry Updates. This fires on many unrelated
+    # changes, but that is harmless: the export is debounced and the
+    # content-diff guard in export_google_assistant_entities() ensures we
+    # only rewrite exposed.yaml (and notify) when the generated content
+    # actually changes. This keeps triggering reliable while preventing the
+    # notification spam that an unconditional notify used to cause.
+    @callback
+    def _on_registry_update(event):
+        if event.data.get("action") in ("create", "update"):
+            _schedule_export()
 
-    # Subscribe to Entity Registry Updates
-    hass.bus.async_listen("entity_registry_updated", _schedule_export)
+    hass.bus.async_listen("entity_registry_updated", _on_registry_update)
     
     # ------------------------------------------------------------------
     # REGISTER SERVICE
